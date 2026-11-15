@@ -30,10 +30,11 @@ child restates `platforms:`).
 
 ## What is on PATH
 
-Only `coreutils` — the multicall binary (`coreutils ls`, `coreutils sort`, …).
-Upstream's x86_64 Windows archive additionally ships ~85 per-utility `.exe`
-copies that would shadow host tools (`link.exe`, `sort.exe`, `timeout.exe`, …);
-the spec cannot filter archive files, so **windows/amd64 is not mirrored**. See
+The multicall binary `coreutils` (`coreutils ls`, `coreutils sort`, …).
+On windows/amd64 upstream's archive additionally ships ~90 per-utility `.exe`
+copies, which are shipped as-is and land on PATH (`link.exe`, `sort.exe`,
+`timeout.exe`, … shadow host tools); that platform's metadata therefore omits
+`binaries`, as the set changes every release. See
 the comments in [`coreutils/mirror.yml`](coreutils/mirror.yml).
 
 ## Editing
