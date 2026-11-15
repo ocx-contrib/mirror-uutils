@@ -1,0 +1,170 @@
+## mirror-uutils — the single spec for ocx.sh/uutils/coreutils.
+##
+## No mirror-base.yml and no `extends:` yet: this repo holds one package, so
+## every key is package-owned (same shape as mirror-gohugoio). A second
+## uutils package (findutils, diffutils) adds a sibling directory and only then
+## a base — a content move that renames no generated workflow file.
+
+name: coreutils
+
+# Logical index package `uutils/coreutils` at the physical path
+# `ghcr.io/ocx-contrib/uutils/coreutils` — slash segments, never hyphen-flattened.
+# Namespace rule 1/2: `uutils` is the project's own org brand and will hold more
+# packages (findutils, diffutils).
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/uutils/coreutils
+
+source:
+  type: github_release
+  owner: uutils
+  repo: coreutils
+  # Bare `X.Y.Z`, no `v`. The anchor also drops the one odd tag, `0.0.1.1`.
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+skip_prereleases: true
+cascade: true
+
+# Versions are bare semver with no `+build` segment, so `date` cannot collide
+# with upstream build metadata; it keeps cascade re-publishes from orphaning
+# the prior digest.
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+# ─── What lands on PATH — the point of this package's layout ────────────────
+#
+# uutils is a MULTICALL binary: `coreutils ls`, `coreutils sort`, … This mirror
+# exposes ONLY `coreutils`. The per-utility names (ls, cat, sort, link, …) must
+# never reach a consumer's PATH — they would shadow the host's own tools.
+#
+# Every Linux, macOS and windows/arm64 archive (all versions, 0.1.0 .. 0.12.0)
+# holds exactly `coreutils`(.exe), LICENSE, README.md, README.package.md in one
+# wrapper directory — no per-utility links. (linux/amd64 *gnu* additionally
+# ships `uudoc`; the musl build mirrored here does not.)
+#
+# The x86_64 Windows zip is the exception: from 0.8.0 it carries ~85 standalone
+# per-utility `.exe` copies (arch, cat, cp, link, ln, ls, sort, timeout, …)
+# beside `coreutils.exe`. Declaring windows/amd64 would put all of them on PATH
+# (`link.exe` shadows the MSVC linker, `sort`/`timeout`/`more` shadow Windows
+# built-ins), and the spec has no per-file filter. windows/amd64 is therefore
+# DELIBERATELY NOT DECLARED. Revisit if upstream stops shipping the copies or
+# ocx-mirror gains an archive include/exclude filter.
+#
+# ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
+#
+# Measured on 0.12.0 (and `file` re-checked on 0.0.30, 0.1.0, 0.3.0, 0.6.0,
+# 0.9.0 — identical linkage on every one):
+#
+#   $ file x86_64-unknown-linux-musl/…/coreutils
+#     ELF 64-bit LSB pie executable, x86-64 … static-pie linked, stripped
+#   $ file aarch64-unknown-linux-musl/…/coreutils
+#     ELF 64-bit LSB executable, ARM aarch64 … statically linked, stripped
+#   $ readelf -l <each musl binary> | grep -c INTERP   -> 0
+#   $ readelf -d <each musl binary> | grep -c NEEDED    -> 0
+#
+#   $ file x86_64-unknown-linux-gnu/…/coreutils
+#     … dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2 …
+#   $ readelf -d <gnu> | grep NEEDED  -> libgcc_s.so.1 libm.so.6 libc.so.6
+#   $ readelf -V <gnu> | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1
+#     GLIBC_2.39          (x86_64 AND aarch64)
+#
+# The musl builds are STATIC, so they require nothing of the host: a BARE key,
+# never `+libc.musl` (that would be a false requirement hiding them from every
+# glibc host). The gnu builds add nothing a local-files tool can use (no DNS,
+# no NSS) but impose a glibc >= 2.39 floor (Debian 12 / Ubuntu 22.04 fail), so
+# they are NOT mirrored: the static build alone covers both userlands on a
+# wider range of hosts (Phase 3.5 table, row 2, "static one alone").
+#
+# ─── Scope ──────────────────────────────────────────────────────────────────
+#
+# Resolution verified BOTH ways on 0.12.0 (newest) and 0.1.0 (floor): each
+# pattern below matches EXACTLY one asset. Not mirrored: *-linux-gnu (above),
+# windows-gnu (0.2.0–0.8.0 only, would double-match without the msvc anchor),
+# windows/amd64 (above), i686-*, arm-unknown-linux-gnueabihf, riscv64gc,
+# redox, wasm32-wasip1/wasip2 (not expressible: ocx platforms are
+# linux/darwin/windows x amd64/arm64).
+assets:
+  linux/amd64:
+    - "^coreutils-\\d+\\.\\d+\\.\\d+-x86_64-unknown-linux-musl\\.tar\\.gz$"
+  linux/arm64:
+    - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-unknown-linux-musl\\.tar\\.gz$"
+  darwin/amd64:
+    - "^coreutils-\\d+\\.\\d+\\.\\d+-x86_64-apple-darwin\\.tar\\.gz$"
+  darwin/arm64:
+    - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-apple-darwin\\.tar\\.gz$"
+  windows/arm64:
+    - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-pc-windows-msvc\\.zip$"
+
+# One wrapper directory on every platform (`coreutils-<ver>-<triple>/`, or
+# `coreutils-<triple>/` in 0.6.0 — the name varies, the depth does not), no
+# `bin/`. Stripping one level puts the executable at the content root, so PATH
+# is a bare ${installPath} on all five platforms.
+asset_type:
+  type: archive
+  strip_components: 1
+
+# `off`: the scan needs `${installPath}/<dir>`, and the wrapper name embeds the
+# version/triple. `binaries` is hand-listed instead (metadata.json) — exactly
+# one entry, which is the whole point.
+bin_scan: off
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  # 0.1.0 is the first release of the 0.x line proper; 0.0.x (30 pre-releases)
+  # is skipped. Layout, linkage and the 5-platform set are identical across the
+  # whole range (sampled 0.1.0, 0.3.0, 0.6.0, 0.9.0, 0.12.0).
+  min: "0.1.0"
+  new_per_run: 10
+  poll_interval: "23 3-23/6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT.
+  - name: smoke
+    script: coreutils/tests/smoke.star
+
+annotations:
+  #   gh api repos/uutils/coreutils/license --jq .license.spdx_id  ->  MIT
+  org.opencontainers.image.licenses: "MIT"
+
+# Bare key (static musl): ubuntu + alpine + fedora — alpine is the only
+# evidence the universal claim is honest.
+platforms:
+  linux/amd64:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  linux/arm64:
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  darwin/amd64:
+    # Intel slice under Rosetta 2 on the arm64 runner (native Intel pool is
+    # exhausted). Prefix is the same as the default; stated for clarity.
+    runner: macos-15
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-15
+    shell: bash
+  windows/arm64:
+    runner: windows-11-arm
+    shell: pwsh
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"
+
+announce:
+  package: uutils/coreutils
+  fork: ocx-contrib/index
