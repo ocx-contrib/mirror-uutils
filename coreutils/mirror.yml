@@ -39,7 +39,7 @@ verify:
 # exposes ONLY `coreutils`. The per-utility names (ls, cat, sort, link, …) must
 # never reach a consumer's PATH — they would shadow the host's own tools.
 #
-# Every Linux, macOS and windows/arm64 archive (all versions, 0.1.0 .. 0.12.0)
+# Every Linux, macOS and windows/arm64 archive (all versions, 0.2.2 .. 0.12.0)
 # holds exactly `coreutils`(.exe), LICENSE, README.md, README.package.md in one
 # wrapper directory — no per-utility links. (linux/amd64 *gnu* additionally
 # ships `uudoc`; the musl build mirrored here does not.)
@@ -54,8 +54,8 @@ verify:
 #
 # ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
 #
-# Measured on 0.12.0 (and `file` re-checked on 0.0.30, 0.1.0, 0.3.0, 0.6.0,
-# 0.9.0 — identical linkage on every one):
+# Measured on 0.12.0 (and `file` re-checked on 0.2.2, 0.3.0, 0.6.0, 0.9.0
+# — identical linkage on every one; 0.2.0 is dynamic musl, hence versions.min):
 #
 #   $ file x86_64-unknown-linux-musl/…/coreutils
 #     ELF 64-bit LSB pie executable, x86-64 … static-pie linked, stripped
@@ -79,7 +79,7 @@ verify:
 #
 # ─── Scope ──────────────────────────────────────────────────────────────────
 #
-# Resolution verified BOTH ways on 0.12.0 (newest) and 0.1.0 (floor): each
+# Resolution verified BOTH ways on 0.12.0 (newest) and 0.2.2 (floor): each
 # pattern below matches EXACTLY one asset. Not mirrored: *-linux-gnu (above),
 # windows-gnu (0.2.0–0.8.0 only, would double-match without the msvc anchor),
 # windows/amd64 (above), i686-*, arm-unknown-linux-gnueabihf, riscv64gc,
@@ -117,10 +117,16 @@ catalog:
   logo: logo.svg
 
 versions:
-  # 0.1.0 is the first release of the 0.x line proper; 0.0.x (30 pre-releases)
-  # is skipped. Layout, linkage and the 5-platform set are identical across the
-  # whole range (sampled 0.1.0, 0.3.0, 0.6.0, 0.9.0, 0.12.0).
-  min: "0.1.0"
+  # 0.2.2 is the floor because 0.2.0 is the last release whose musl builds are
+  # DYNAMIC (`interpreter /lib/ld-musl-x86_64.so.1` / `ld-musl-aarch64.so.1`,
+  # measured with `file`): libc_lint refuses them under a bare key (exit 65,
+  # seen in CI run 43706542497) and a `+libc.musl` key would be a different
+  # platform. 0.2.2 onward is static on both arches (`static-pie linked` /
+  # `statically linked`, sampled 0.2.2, 0.3.0, 0.6.0, 0.9.0, 0.12.0). 0.1.0
+  # (and 0.0.x) happen to be static again but are below the floor; 0.1.x also
+  # rejects `coreutils --version`. Layout and the 5-platform set are identical
+  # across the whole range.
+  min: "0.2.2"
   new_per_run: 10
   poll_interval: "23 3-23/6 * * *"
 
