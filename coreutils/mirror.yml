@@ -46,12 +46,11 @@ verify:
 #
 # The x86_64 Windows zip is the exception: from 0.8.0 it carries ~85 standalone
 # per-utility `.exe` copies (arch, cat, cp, link, ln, ls, sort, timeout, …)
-# beside `coreutils.exe`. Owner decision 2026-11-15: ship windows/amd64 as
-# upstream publishes it — all copies land on PATH (`link.exe`, `sort.exe`,
-# `timeout.exe`, … shadow MSVC/Windows tools while the package is active).
-# The set changes every release (87 in 0.10.0, 89 in 0.11.0, 92 in 0.12.0), so
-# metadata-windows-amd64.json OMITS `binaries` ("nobody declared") rather than
-# publish a list that is wrong for most versions.
+# beside `coreutils.exe`. Declaring windows/amd64 would put all of them on PATH
+# (`link.exe` shadows the MSVC linker, `sort`/`timeout`/`more` shadow Windows
+# built-ins), and the spec has no per-file filter. windows/amd64 is therefore
+# DELIBERATELY NOT DECLARED. Revisit if upstream stops shipping the copies or
+# ocx-mirror gains an archive include/exclude filter.
 #
 # ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
 #
@@ -83,7 +82,7 @@ verify:
 # Resolution verified BOTH ways on 0.12.0 (newest) and 0.10.0 (floor): each
 # pattern below matches EXACTLY one asset. Not mirrored: *-linux-gnu (above),
 # windows-gnu (0.2.0–0.8.0 only, would double-match without the msvc anchor),
-# i686-*, arm-unknown-linux-gnueabihf, riscv64gc,
+# windows/amd64 (above), i686-*, arm-unknown-linux-gnueabihf, riscv64gc,
 # redox, wasm32-wasip1/wasip2 (not expressible: ocx platforms are
 # linux/darwin/windows x amd64/arm64).
 assets:
@@ -95,15 +94,13 @@ assets:
     - "^coreutils-\\d+\\.\\d+\\.\\d+-x86_64-apple-darwin\\.tar\\.gz$"
   darwin/arm64:
     - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-apple-darwin\\.tar\\.gz$"
-  windows/amd64:
-    - "^coreutils-\\d+\\.\\d+\\.\\d+-x86_64-pc-windows-msvc\\.zip$"
   windows/arm64:
     - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-pc-windows-msvc\\.zip$"
 
 # One wrapper directory on every platform (`coreutils-<ver>-<triple>/`, or
 # `coreutils-<triple>/` in 0.6.0 — the name varies, the depth does not), no
 # `bin/`. Stripping one level puts the executable at the content root, so PATH
-# is a bare ${installPath} on all six platforms.
+# is a bare ${installPath} on all five platforms.
 asset_type:
   type: archive
   strip_components: 1
@@ -115,8 +112,6 @@ bin_scan: off
 
 metadata:
   default: metadata.json
-  platforms:
-    windows/amd64: metadata-windows-amd64.json
 
 catalog:
   logo: logo.svg
@@ -127,7 +122,7 @@ versions:
   # linked, measured on 0.10.0, 0.11.0, 0.12.0), so the bare keys hold. Do not
   # lower the floor past 0.2.2: 0.2.0's musl builds are DYNAMIC
   # (`/lib/ld-musl-*.so.1`) and libc_lint refuses them under a bare key (CI run
-  # 43706542497). Layout and the 6-platform set are identical across the range.
+  # 43706542497). Layout and the 5-platform set are identical across the range.
   min: "0.10.0"
   new_per_run: 10
   poll_interval: "23 3-23/6 * * *"
@@ -164,9 +159,6 @@ platforms:
   darwin/arm64:
     runner: macos-15
     shell: bash
-  windows/amd64:
-    runner: windows-latest
-    shell: pwsh
   windows/arm64:
     runner: windows-11-arm
     shell: pwsh
