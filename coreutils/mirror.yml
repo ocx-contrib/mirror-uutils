@@ -44,13 +44,12 @@ verify:
 # wrapper directory — no per-utility links. (linux/amd64 *gnu* additionally
 # ships `uudoc`; the musl build mirrored here does not.)
 #
-# The x86_64 Windows zip is the exception: from 0.8.0 it carries ~85 standalone
-# per-utility `.exe` copies (arch, cat, cp, link, ln, ls, sort, timeout, …)
-# beside `coreutils.exe`. Declaring windows/amd64 would put all of them on PATH
-# (`link.exe` shadows the MSVC linker, `sort`/`timeout`/`more` shadow Windows
-# built-ins), and the spec has no per-file filter. windows/amd64 is therefore
-# DELIBERATELY NOT DECLARED. Revisit if upstream stops shipping the copies or
-# ocx-mirror gains an archive include/exclude filter.
+# The x86_64 Windows zip is the exception: from 0.8.0 it carries ~85-90 standalone
+# per-utility `.exe` builds (arch, cat, cp, link, ln, ls, sort, timeout, …) beside
+# `coreutils.exe` — ~170 MB unpacked. On PATH they would shadow the MSVC linker
+# (`link.exe`) and Windows built-ins (`sort`, `timeout`, `more`). The
+# windows/amd64 `asset_type` below therefore keeps ONLY coreutils.exe + docs via
+# `include:` (ocx-mirror >= 0.6.5); every call goes through the multicall binary.
 #
 # ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
 #
@@ -82,7 +81,7 @@ verify:
 # Resolution verified BOTH ways on 0.12.0 (newest) and 0.10.0 (floor): each
 # pattern below matches EXACTLY one asset. Not mirrored: *-linux-gnu (above),
 # windows-gnu (0.2.0–0.8.0 only, would double-match without the msvc anchor),
-# windows/amd64 (above), i686-*, arm-unknown-linux-gnueabihf, riscv64gc,
+# i686-*, arm-unknown-linux-gnueabihf, riscv64gc,
 # redox, wasm32-wasip1/wasip2 (not expressible: ocx platforms are
 # linux/darwin/windows x amd64/arm64).
 assets:
@@ -94,21 +93,33 @@ assets:
     - "^coreutils-\\d+\\.\\d+\\.\\d+-x86_64-apple-darwin\\.tar\\.gz$"
   darwin/arm64:
     - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-apple-darwin\\.tar\\.gz$"
+  windows/amd64:
+    - "^coreutils-\\d+\\.\\d+\\.\\d+-x86_64-pc-windows-msvc\\.zip$"
   windows/arm64:
     - "^coreutils-\\d+\\.\\d+\\.\\d+-aarch64-pc-windows-msvc\\.zip$"
 
 # One wrapper directory on every platform (`coreutils-<ver>-<triple>/`, or
 # `coreutils-<triple>/` in 0.6.0 — the name varies, the depth does not), no
 # `bin/`. Stripping one level puts the executable at the content root, so PATH
-# is a bare ${installPath} on all five platforms.
+# is a bare ${installPath} on all six platforms.
 asset_type:
-  type: archive
-  strip_components: 1
+  default:
+    type: archive
+    strip_components: 1
+  platforms:
+    # Drop the per-utility .exe builds (see the header): only the multicall
+    # binary and the docs ship. An include that matches nothing fails the
+    # version, so an upstream rename reds instead of publishing a partial bundle.
+    windows/amd64:
+      type: archive
+      strip_components: 1
+      include: ["coreutils.exe", "LICENSE", "README*"]
 
-# `off`: the scan needs `${installPath}/<dir>`, and the wrapper name embeds the
-# version/triple. `binaries` is hand-listed instead (metadata.json) — exactly
-# one entry, which is the whole point.
-bin_scan: off
+# `verify`: the bare ${installPath} is a scan target since ocx-mirror 0.6.5, and
+# the scan must find exactly the hand-listed `binaries` (metadata.json) — one
+# entry, `coreutils`. A future archive that grows per-utility executables on any
+# platform reds here instead of shipping them.
+bin_scan: verify
 
 metadata:
   default: metadata.json
@@ -159,6 +170,9 @@ platforms:
   darwin/arm64:
     runner: macos-15
     shell: bash
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
   windows/arm64:
     runner: windows-11-arm
     shell: pwsh
