@@ -1,0 +1,139 @@
+## mirror-uutils — the spec for ocx.sh/uutils/sed.
+
+name: sed
+
+# Logical index package `uutils/sed` at the physical path
+# `ghcr.io/ocx-contrib/uutils/sed` — slash segments, never hyphen-flattened.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/uutils/sed
+
+source:
+  type: github_release
+  owner: uutils
+  repo: sed
+  # Bare `X.Y.Z`, no `v`. The anchor drops the `latest-commit` rolling
+  # prerelease tag (a moving snapshot, not a version).
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+skip_prereleases: true
+cascade: true
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+# ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
+#
+# Measured on 0.3.0 and 0.1.1 (identical linkage on both):
+#
+#   $ file sed-x86_64-unknown-linux-musl/sed
+#     ELF 64-bit LSB pie executable, x86-64 … static-pie linked, not stripped
+#   $ readelf -l <musl> | grep -c INTERP   -> 0
+#   $ readelf -d <musl> | grep NEEDED      -> (none)
+#
+#   $ file sed-x86_64-unknown-linux-gnu/sed
+#     … dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2 …
+#   $ file sed-aarch64-unknown-linux-gnu/sed
+#     … dynamically linked, interpreter /lib/ld-linux-aarch64.so.1 …
+#   $ readelf -d <gnu> | grep NEEDED  -> libgcc_s.so.1 libc.so.6
+#   $ readelf -V <gnu> | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1
+#     GLIBC_2.34          (x86_64 AND aarch64, both versions)
+#
+# linux/amd64: the musl build is STATIC, so it takes the BARE key and covers
+# glibc and musl hosts alike; the gnu build is not mirrored ("static one alone",
+# and it would impose a glibc >= 2.34 floor).
+# linux/arm64: upstream ships ONLY a gnu build (dynamic, glibc >= 2.34), so it
+# is keyed `+libc.glibc` — a musl/alpine host correctly sees no arm64 candidate.
+#
+# ─── Scope ──────────────────────────────────────────────────────────────────
+#
+# Stable releases with binary assets: 0.1.1 and 0.3.0 (tag 0.2.0 exists but has
+# no GitHub release, hence no assets). Resolution verified BOTH ways on 0.3.0
+# and 0.1.1: each pattern matches EXACTLY one asset. Not mirrored:
+# x86_64-unknown-linux-gnu (static musl preferred, above); no windows/arm64 or
+# darwin-only extras exist upstream.
+assets:
+  linux/amd64:
+    - "^sed-x86_64-unknown-linux-musl\\.tar\\.xz$"
+  "linux/arm64+libc.glibc":
+    - "^sed-aarch64-unknown-linux-gnu\\.tar\\.xz$"
+  darwin/amd64:
+    - "^sed-x86_64-apple-darwin\\.tar\\.xz$"
+  darwin/arm64:
+    - "^sed-aarch64-apple-darwin\\.tar\\.xz$"
+  windows/amd64:
+    - "^sed-x86_64-pc-windows-msvc\\.zip$"
+
+# The tarballs wrap everything in `sed-<triple>/`; the Windows zip is FLAT
+# (`sed.exe`, LICENSE, README.md at the root). Strip one level on the tarballs
+# only, so `sed`/`sed.exe` sits at the content root everywhere and PATH is a
+# bare ${installPath}. The archives hold nothing but the binary, LICENSE and
+# README.md, so no include/exclude filter is needed.
+asset_type:
+  default:
+    type: archive
+    strip_components: 1
+  platforms:
+    windows/amd64:
+      type: archive
+      strip_components: 0
+
+# `verify`: hand-listed `binaries` (metadata.json) checked against the extracted
+# tree — a bare ${installPath} PATH entry is a valid scan target (ocx >= 0.6.7).
+bin_scan: verify
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  min: "0.1.1"
+  new_per_run: 10
+  poll_interval: "10 1-23/6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT.
+  - name: smoke
+    script: sed/tests/smoke.star
+
+annotations:
+  #   gh api repos/uutils/sed/license --jq .license.spdx_id  ->  MIT
+  org.opencontainers.image.licenses: "MIT"
+
+platforms:
+  # Static musl — bare key: ubuntu + alpine + fedora (alpine is the evidence).
+  linux/amd64:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  # gnu build — genuinely needs a glibc loader; no alpine leg.
+  "linux/arm64+libc.glibc":
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  darwin/amd64:
+    # Intel slice under Rosetta 2 on the arm64 runner (native Intel pool is
+    # exhausted). Prefix is the same as the default; stated for clarity.
+    runner: macos-15
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-15
+    shell: bash
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"
+
+announce:
+  package: uutils/sed
+  fork: ocx-contrib/index

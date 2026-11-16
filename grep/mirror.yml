@@ -1,0 +1,130 @@
+name: grep
+
+# Logical index package `uutils/grep` at `ghcr.io/ocx-contrib/uutils/grep`.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/uutils/grep
+
+source:
+  type: github_release
+  owner: uutils
+  repo: grep
+  # Bare `X.Y.Z`, no `v`; the anchor drops the `latest-commit` prerelease tag.
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+skip_prereleases: true
+cascade: true
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+# ─── What lands on PATH ─────────────────────────────────────────────────────
+#
+# The executable is literally `grep` (`grep.exe` on Windows), NOT `uu_grep`
+# (only the archive is named `uu_grep-…`). It is exposed under its real name,
+# so on PATH it shadows the host's own `grep` — by design of this package.
+# Each archive holds exactly `grep`, LICENSE, README.md.
+#
+# ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
+#
+# Measured on 0.2.0 (the only version with assets):
+#
+#   $ file …/uu_grep-x86_64-unknown-linux-gnu/grep
+#     ELF 64-bit LSB pie executable, x86-64 … dynamically linked,
+#     interpreter /lib64/ld-linux-x86-64.so.2 … not stripped
+#   $ file …/uu_grep-aarch64-unknown-linux-gnu/grep
+#     ELF 64-bit LSB pie executable, ARM aarch64 … dynamically linked,
+#     interpreter /lib/ld-linux-aarch64.so.1 … not stripped
+#   $ readelf -l <each> | grep INTERP   -> 1 (dynamic)
+#   $ readelf -d <each> | grep NEEDED   -> libgcc_s.so.1 libc.so.6
+#     (aarch64 also ld-linux-aarch64.so.1)
+#   $ readelf -V <each> | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1
+#     GLIBC_2.34          (x86_64 AND aarch64)
+#
+# Upstream ships ONLY gnu Linux builds (no musl/static), so both Linux keys are
+# `+libc.glibc` (glibc >= 2.34).
+#
+# ─── Scope ──────────────────────────────────────────────────────────────────
+#
+# Resolution verified on 0.2.0 (floor == newest): each pattern matches EXACTLY
+# one asset; `.sha256`, `source.tar.gz`, `sha256.sum`, `dist-manifest.json` are
+# excluded by the `$` anchor and the `uu_grep-` prefix. 0.1.0 has no assets, so
+# the floor is 0.2.0. Upstream ships no windows/arm64.
+assets:
+  linux/amd64+libc.glibc:
+    - "^uu_grep-x86_64-unknown-linux-gnu\\.tar\\.xz$"
+  linux/arm64+libc.glibc:
+    - "^uu_grep-aarch64-unknown-linux-gnu\\.tar\\.xz$"
+  darwin/amd64:
+    - "^uu_grep-x86_64-apple-darwin\\.tar\\.xz$"
+  darwin/arm64:
+    - "^uu_grep-aarch64-apple-darwin\\.tar\\.xz$"
+  windows/amd64:
+    - "^uu_grep-x86_64-pc-windows-msvc\\.zip$"
+
+# Tarballs carry one wrapper dir (`uu_grep-<triple>/`); the Windows zip is flat
+# (`grep.exe` at the root), so it strips nothing.
+asset_type:
+  type: archive
+  strip_components:
+    default: 1
+    platforms:
+      windows/amd64: 0
+
+# Hand-listed `binaries` (metadata.json) checked against the extracted tree
+# via the bare `${installPath}` PATH entry.
+bin_scan: verify
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  min: "0.2.0"
+  new_per_run: 10
+  poll_interval: "7 4-23/6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT.
+  - name: smoke
+    script: grep/tests/smoke.star
+
+annotations:
+  #   gh api repos/uutils/grep/license --jq .license.spdx_id  ->  MIT
+  org.opencontainers.image.licenses: "MIT"
+
+# `+libc.glibc`: glibc containers only (alpine would be a false leg).
+platforms:
+  linux/amd64+libc.glibc:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "debian:12",    shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  linux/arm64+libc.glibc:
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "debian:12",    shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  darwin/amd64:
+    runner: macos-15
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-15
+    shell: bash
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"
+
+announce:
+  package: uutils/grep
+  fork: ocx-contrib/index

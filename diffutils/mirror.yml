@@ -1,0 +1,131 @@
+## uutils diffutils — second package of mirror-uutils, sibling of coreutils/.
+
+name: diffutils
+
+# Logical index package `uutils/diffutils` at the physical path
+# `ghcr.io/ocx-contrib/uutils/diffutils`.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/uutils/diffutils
+
+source:
+  type: github_release
+  owner: uutils
+  repo: diffutils
+  # `vX.Y.Z`. The anchor drops the rolling `latest-commit` prerelease tag.
+  tag_pattern: "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+skip_prereleases: true
+cascade: true
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+# ─── What lands on PATH ─────────────────────────────────────────────────────
+#
+# From 0.5.0 the binary is a MULTICALL: `diffutils diff a b`, `diffutils cmp a b`
+# (verified on 0.5.0 and 0.6.0). 0.4.2 and older are a single-purpose
+# `diffutils <from> <to>` with no subcommands, so versions.min is 0.5.0.
+# Only `diffutils` is exposed; bare `diff`/`cmp` must not shadow the host's.
+#
+# Layout: tar.xz archives hold one wrapper dir `diffutils-<triple>/` (binary,
+# LICENSE-APACHE, LICENSE-MIT, README.md); the Windows zip is FLAT (no wrapper)
+# — hence per-platform strip_components. Verified on 0.5.0 and 0.6.0.
+#
+# ─── libc gate (Phase 3.5) — the evidence ───────────────────────────────────
+#
+# Upstream ships ONLY gnu linux builds (no musl/static):
+#
+#   $ file x86_64-unknown-linux-gnu/…/diffutils     (0.5.0, 0.6.0)
+#     ELF 64-bit LSB pie executable, x86-64 … dynamically linked,
+#     interpreter /lib64/ld-linux-x86-64.so.2
+#   $ file aarch64-unknown-linux-gnu/…/diffutils    (0.6.0)
+#     ELF 64-bit LSB pie executable, ARM aarch64 … dynamically linked,
+#     interpreter /lib/ld-linux-aarch64.so.1
+#   $ readelf -d <x86_64 gnu> | grep NEEDED   -> libgcc_s.so.1 libc.so.6
+#   $ readelf -V <x86_64 gnu> | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1
+#     GLIBC_2.34        (x86_64 and aarch64)
+#
+# Dynamic glibc => `+libc.glibc` key; no musl leg, no alpine container.
+#
+# ─── Scope ──────────────────────────────────────────────────────────────────
+#
+# Each pattern matches EXACTLY one asset on 0.6.0 (newest) and 0.5.0 (floor).
+# Windows ships x86_64 only (no windows/arm64). Not expressible/not shipped:
+# checksum sidecars (`.sha256` — anchored out), source.tar.gz, dist-manifest.
+assets:
+  linux/amd64+libc.glibc:
+    - "^diffutils-x86_64-unknown-linux-gnu\\.tar\\.xz$"
+  linux/arm64+libc.glibc:
+    - "^diffutils-aarch64-unknown-linux-gnu\\.tar\\.xz$"
+  darwin/amd64:
+    - "^diffutils-x86_64-apple-darwin\\.tar\\.xz$"
+  darwin/arm64:
+    - "^diffutils-aarch64-apple-darwin\\.tar\\.xz$"
+  windows/amd64:
+    - "^diffutils-x86_64-pc-windows-msvc\\.zip$"
+
+asset_type:
+  type: archive
+  strip_components:
+    default: 1
+    platforms:
+      windows/amd64: 0
+
+# `verify`: with a bare `${installPath}` PATH entry the package root is the scan
+# target; `binaries` is hand-listed (metadata.json) — exactly `diffutils`.
+bin_scan: verify
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  # Floor 0.5.0: first multicall release (see above). Only 0.5.0 and 0.6.0
+  # qualify as of 2026-11-16.
+  min: "0.5.0"
+  new_per_run: 10
+  poll_interval: "59 0-23/6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT.
+  - name: smoke
+    script: diffutils/tests/smoke.star
+
+annotations:
+  # Cargo.toml: license = "MIT OR Apache-2.0" (dual).
+  org.opencontainers.image.licenses: "MIT OR Apache-2.0"
+
+# glibc key: ubuntu + fedora only (glibc floor 2.34; both containers exceed it).
+platforms:
+  linux/amd64+libc.glibc:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  linux/arm64+libc.glibc:
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  darwin/amd64:
+    runner: macos-15
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-15
+    shell: bash
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"
+
+announce:
+  package: uutils/diffutils
+  fork: ocx-contrib/index

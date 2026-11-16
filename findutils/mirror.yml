@@ -1,0 +1,138 @@
+## uutils/findutils — sibling package of coreutils in mirror-uutils.
+
+name: findutils
+
+# Logical index package `uutils/findutils` at the physical path
+# `ghcr.io/ocx-contrib/uutils/findutils` — slash segments, never hyphen-flattened.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/uutils/findutils
+
+source:
+  type: github_release
+  owner: uutils
+  repo: findutils
+  # Bare `X.Y.Z`, no `v`. The anchor drops the `latest-commit` prerelease tag.
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+skip_prereleases: true
+cascade: true
+
+# Same reasoning as coreutils: bare semver, so `date` cannot collide with
+# upstream build metadata and keeps cascade re-publishes from orphaning digests.
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+# ─── What the archives hold ─────────────────────────────────────────────────
+#
+# cargo-dist archives (.tar.xz, .zip on Windows) carrying `find`, `xargs`,
+# `locate`, `updatedb` (+ `.exe` on Windows), LICENSE, README.md and
+# `testing-commandline` (upstream's own test helper, not a user tool — dropped
+# via `exclude`). Unix archives have one wrapper directory
+# (`findutils-<triple>/`); the Windows zip has NONE (strip_components 0).
+# Identical layout on 0.9.1 and 0.11.0 (0.9.0 has no assets at all, hence
+# versions.min 0.9.1).
+#
+# ─── libc gate — the evidence ───────────────────────────────────────────────
+#
+# Measured on 0.9.1 and 0.11.0:
+#
+#   $ file x86_64-unknown-linux-musl/…/find
+#     ELF 64-bit LSB pie executable, x86-64 … static-pie linked, not stripped
+#   $ file aarch64-unknown-linux-musl/…/find
+#     ELF 64-bit LSB executable, ARM aarch64 … statically linked
+#   $ readelf -l <x86_64 musl> | grep -c INTERP   -> 0
+#   $ readelf -d <x86_64 musl> | grep -c NEEDED    -> 0
+#
+# The musl builds are STATIC, so they carry a BARE key. x86_64-unknown-linux-gnu
+# is also shipped but NOT mirrored: the static build alone covers every host.
+#
+# ─── Scope ──────────────────────────────────────────────────────────────────
+#
+# Resolution verified both ways on 0.11.0 (newest) and 0.9.1 (floor): each
+# pattern matches EXACTLY one asset. Upstream ships no windows/arm64 and no
+# aarch64 gnu build; the `.sha256` / installer / source / manifest assets are
+# excluded by the `$` anchors.
+assets:
+  linux/amd64:
+    - "^findutils-x86_64-unknown-linux-musl\\.tar\\.xz$"
+  linux/arm64:
+    - "^findutils-aarch64-unknown-linux-musl\\.tar\\.xz$"
+  darwin/amd64:
+    - "^findutils-x86_64-apple-darwin\\.tar\\.xz$"
+  darwin/arm64:
+    - "^findutils-aarch64-apple-darwin\\.tar\\.xz$"
+  windows/amd64:
+    - "^findutils-x86_64-pc-windows-msvc\\.zip$"
+
+asset_type:
+  default:
+    type: archive
+    strip_components: 1
+    exclude: ["testing-commandline*"]
+  platforms:
+    windows/amd64:
+      type: archive
+      strip_components: 0
+      exclude: ["testing-commandline*"]
+
+# Executables sit at the content root (PATH = bare ${installPath}), which
+# bin_scan accepts as a target since ocx-mirror 0.6.5; `binaries` in
+# metadata.json is hand-listed and verified against the bundle.
+bin_scan: verify
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  # Last three stable releases that carry binary assets.
+  min: "0.9.1"
+  new_per_run: 10
+  poll_interval: "32 0-23/6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT.
+  - name: smoke
+    script: findutils/tests/smoke.star
+
+annotations:
+  #   gh api repos/uutils/findutils/license --jq .license.spdx_id  ->  MIT
+  org.opencontainers.image.licenses: "MIT"
+
+# Bare key (static musl): ubuntu + alpine + fedora.
+platforms:
+  linux/amd64:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  linux/arm64:
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  darwin/amd64:
+    runner: macos-15
+    prefix: ["arch", "-x86_64"]
+  darwin/arm64:
+    runner: macos-15
+    shell: bash
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"
+
+announce:
+  package: uutils/findutils
+  fork: ocx-contrib/index
